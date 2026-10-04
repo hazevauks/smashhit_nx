@@ -102,6 +102,8 @@ static const struct {
     {"istv", c_istv},
     {"quit", c_quit},
     {"visiturl", c_visiturl},
+    /* asked by the engine, but CommandHandler has no entry for it: "" there too */
+    {"isphone", c_empty},
     /* the store (Google Play Billing) */
     {"isproductowned", c_false},
     {"hasrefreshedownedproducts", c_false},

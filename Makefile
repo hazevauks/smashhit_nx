@@ -13,3 +13,7 @@
 TARGET               := smashhit_nx
 PORT_NPDM_PROGRAM_ID := 0x01000000000010E4
 include runtime/runtime.mk
+
+# The runtime's OpenSL ES audio thread, with the stack the engine's mixing
+# callback needs (source/sh_audio.c).
+$(BUILD)/rt/opensles.o: CFLAGS += -DthreadCreate=sh_audio_thread_create

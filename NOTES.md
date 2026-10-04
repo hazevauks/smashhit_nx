@@ -84,6 +84,19 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
 - `[game] tv_mode` responde `istv` → `true` (modo Android TV do jogo):
   experimental, a testar.
 
+## Achados dos testes no hardware
+
+- **Execução 1 (build 202610041910):** o motor carrega, registra os 21 nativos
+  do `GameActivity`, cria o contexto GLES 2 (nouveau, Mesa 20.1), abre o OpenSL
+  (44,1 kHz estéreo 16 bits, blocos de 4096 bytes) e começa a ler o APK. Crash
+  na thread de áudio: `QiAudio::fillBuffer` reserva 128 KB de pilha na entrada
+  (`sub sp, #0x20000`) e a thread do `opensles.c` do runtime tem 64 KB. Corrigido
+  sem copiar o arquivo: `build/rt/opensles.o` é compilado com `threadCreate`
+  trocado por `sh_audio_thread_create` (`source/sh_audio.c`), que dá 1 MB.
+- O motor também pergunta `isphone`, que o `CommandHandler` do Java não tem
+  (responde `""`); está na tabela só para não poluir o log.
+- `dlopen(libcrashlytics.so)` falha e o motor segue (o Crashlytics fica desligado).
+
 ## Pendências
 
 - [x] Repositório privado e primeiro build no GitHub Actions: 304 imports,
