@@ -5,9 +5,9 @@ armeabi-v7a) para Nintendo Switch sobre o runtime
 [android32](https://github.com/aks796/android32) (submódulo em `runtime/`,
 commit `50b352c`).
 
-Estado: **primeiro rascunho, ainda não compilado nem testado no hardware.**
-Build no GitHub Actions (`.github/workflows/build.yml`); nesta máquina não há
-Docker, Python nem compilador.
+Estado: **compila no GitHub Actions (primeiro build limpo, sem avisos); ainda não
+testado no hardware.** Build em `.github/workflows/build.yml`; nesta máquina não
+há Docker, Python nem compilador.
 
 ## O jogo
 
@@ -86,8 +86,8 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
 
 ## Pendências
 
-- [ ] Publicar o repositório e fazer o primeiro build no GitHub Actions
-      (erros de compilação só aparecem lá)
+- [x] Repositório privado e primeiro build no GitHub Actions: 304 imports,
+      303 ligados, 1 fraco nulo, 0 faltando; NSP e NRO nos artefatos
 - [ ] Primeiro teste no hardware: mandar `debug.log` e `crash.log`; a lista de
       métodos Java "unhandled" do log é a lista de tarefas de `sh_java.c`
 - [ ] Conferir o formato pedido ao OpenSL ES (taxa, canais) no log do
