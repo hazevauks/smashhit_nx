@@ -71,6 +71,7 @@ static jlong g_handle;
 static volatile int g_exit;
 static int g_w, g_h;
 static fn_event n_touch, n_key_down, n_key_up;
+static u64 g_t_up; /* the tick the activity was up at: the first report's start */
 
 /* For the watchdog: frames presented. */
 uint64_t dcr_boot_frames(void) { return dcr_gl_frames(); }
@@ -169,9 +170,10 @@ static void report(void) {
   static unsigned long last_presented;
   const u64 tick = armGetSystemTick();
   const unsigned long presented = (unsigned long)dcr_gl_frames();
-  const double fps = last_tick ? (double)(presented - last_presented) * 1e9 /
-                                     (double)armTicksToNs(tick - last_tick)
-                               : 0.0;
+  /* the first report has nothing to measure from: the rate since the start */
+  if (!last_tick)
+    last_tick = g_t_up;
+  const double fps = (double)(presented - last_presented) * 1e9 / (double)armTicksToNs(tick - last_tick);
   last_tick = tick;
   last_presented = presented;
   debugPrintf("[activity] %lu frames presented (%.1f fps), %d Java objects\n", presented, fps,
@@ -225,7 +227,8 @@ int sh_activity_run(void) {
   log_flush_ring();
 
   /* ---- the UI thread ---- */
-  u64 last_input = 0, last_report = armGetSystemTick();
+  g_t_up = armGetSystemTick();
+  u64 last_input = 0, last_report = g_t_up;
   int launch_done = 0;
   unsigned long quiet_at = 0;
   const u64 input_period = armNsToTicks(8000000ull); /* 8 ms: twice per display frame */

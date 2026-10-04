@@ -23,6 +23,8 @@ static DcrConfig g_cfg = {
     .cpu_cores = 3,
     .language = "auto",
     .tv_mode = 0,
+    .gyro = 0,
+    .gyro_speed = 1.0f,
 };
 
 const DcrConfig *dcr_config(void) { return &g_cfg; }
@@ -62,6 +64,15 @@ static const CfgOpt k_opts[] = {
      "Tell the game it runs on a television (Android TV), where it expects a\n"
      "# remote or a gamepad instead of a touch screen. Experimental.",
      CFG_BOOL, NULL, &g_cfg.tv_mode},
+    {"controls", "gyro_pointer", "false",
+     "Aim by moving the controller: its motion sensor moves the pointer (the\n"
+     "# sticks still do). A click of the right stick turns it on and off while\n"
+     "# playing; this is what it is when the game starts. Y puts the pointer back\n"
+     "# in the middle of the screen.",
+     CFG_BOOL, NULL, &g_cfg.gyro},
+    {"controls", "gyro_speed", "1.0",
+     "How far the pointer moves for a turn of the controller: 0.25 to 4.0.", CFG_FLOAT, NULL,
+     &g_cfg.gyro_speed, 0.25f, 4.0f},
     /* [config] version = 1: the engine's row, last (CfgTable.version) */
 };
 

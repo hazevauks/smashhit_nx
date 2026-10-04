@@ -178,9 +178,10 @@ void *b_AAssetManager_open(void *mgr, const char *filename, int mode) {
   Entry *e = find(filename);
   __atomic_add_fetch(&g_opens, 1, __ATOMIC_RELAXED);
   if (!e) {
-    /* the engine probes for optional files (a level's variants): the first
-     * few are worth a line, the rest are counted */
-    if (__atomic_add_fetch(&g_misses, 1, __ATOMIC_RELAXED) <= 48)
+    /* the engine looks for each file in several folders in turn (189 misses
+     * for 318 files found, in the first hardware run): the first few are
+     * worth a line, the rest are counted */
+    if (__atomic_add_fetch(&g_misses, 1, __ATOMIC_RELAXED) <= 12)
       debugPrintf("[assets] open(%s): not in the APK\n", filename ? filename : "(null)");
     return NULL;
   }

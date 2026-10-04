@@ -18,7 +18,9 @@
  * analogue stick. So, besides the touch screen itself (handheld), a pointer:
  * either stick moves it over the picture (drawn at the end of this file),
  * and A, ZR or ZL touch the screen where it is, for as long as they are
- * held. The other buttons go to the game as the keys it knows: the D-pad,
+ * held. The controller's motion sensor can move it too (gyro pointing: a
+ * click of the right stick turns it on and off), and Y puts it back in the
+ * middle. The other buttons go to the game as the keys it knows: the D-pad,
  * X as BUTTON_A, L and R as L1 and R1, B and + as BACK, - as MENU.
  *
  * One thread does it all, between the UI thread's looper turns
@@ -199,29 +201,118 @@ static u64 g_plast_poll;
 #define POINTER_SPEED 1100.0f   /* pixels a second at full tilt, at 720p */
 #define POINTER_HIDE_NS 6000000000ull
 
-static void pointer_poll(u64 buttons, const float sticks[4], int touching) {
+/* ------------------------------------------------------------------- gyro */
+/* The game knows no motion sensor (it imports none of ASensor): the
+ * controller's is the port's own way of moving the pointer, as in the
+ * runtime's Angry Birds Space port, whose handles, axes and signs these are
+ * (proven on hardware there): the console with its Joy-Cons attached, player
+ * 1's Pro Controller, player 1's pair of Joy-Cons (the right one, else the
+ * left). Turning the controller left-right moves the pointer across, up-down
+ * moves it up and down, by its angular velocity (in turns a second). */
+static HidSixAxisSensorHandle g_six[4]; /* handheld; Pro Controller; Joy-Con pair: left, right */
+static int g_gyro_ready, g_gyro_on;
+
+#define GYRO_GAIN 7200.0f    /* pixels a second for one turn a second, at 1080p */
+#define GYRO_DEADZONE 0.004f /* turns a second: a resting hand, the sensor's drift */
+#define GYRO_AWAKE 0.05f     /* turns a second: aiming on purpose keeps the pointer shown */
+
+static void gyro_init(void) {
+  const Result r0 =
+      hidGetSixAxisSensorHandles(&g_six[0], 1, HidNpadIdType_Handheld, HidNpadStyleTag_NpadHandheld);
+  const Result r1 =
+      hidGetSixAxisSensorHandles(&g_six[1], 1, HidNpadIdType_No1, HidNpadStyleTag_NpadFullKey);
+  const Result r2 =
+      hidGetSixAxisSensorHandles(&g_six[2], 2, HidNpadIdType_No1, HidNpadStyleTag_NpadJoyDual);
+  if (R_SUCCEEDED(r0) && R_SUCCEEDED(r1) && R_SUCCEEDED(r2)) {
+    for (int i = 0; i < 4; i++)
+      hidStartSixAxisSensor(g_six[i]);
+    g_gyro_ready = 1;
+  }
+  g_gyro_on = g_gyro_ready && dcr_config()->gyro;
+  debugPrintf("[input] motion sensors %s (0x%x 0x%x 0x%x); gyro pointing %s (right stick click: on/off)\n",
+              g_gyro_ready ? "ready" : "NOT available", (unsigned)r0, (unsigned)r1, (unsigned)r2,
+              g_gyro_on ? "on" : "off");
+}
+
+/* The angular velocity of the controller in the player's hands, as pointer
+ * directions (x right, y down), in turns a second: 1 when one was read. */
+static int gyro_read(float *vx, float *vy) {
+  HidSixAxisSensorState s = {0};
+  float sign = 1.0f; /* Joy-Cons; the Pro Controller's sensor is mirrored */
+  int got = 0;
+  if (padIsConnected(&g_pads[1])) {
+    got = hidGetSixAxisSensorStates(g_six[0], &s, 1) > 0;
+  } else if (padIsConnected(&g_pads[0])) {
+    const u64 style = padGetStyleSet(&g_pads[0]);
+    if (style & HidNpadStyleTag_NpadFullKey) {
+      sign = -1.0f;
+      got = hidGetSixAxisSensorStates(g_six[1], &s, 1) > 0;
+    } else if (style & HidNpadStyleTag_NpadJoyDual) {
+      const u32 attr = padGetAttributes(&g_pads[0]);
+      if (attr & HidNpadAttribute_IsRightConnected)
+        got = hidGetSixAxisSensorStates(g_six[3], &s, 1) > 0;
+      else if (attr & HidNpadAttribute_IsLeftConnected)
+        got = hidGetSixAxisSensorStates(g_six[2], &s, 1) > 0;
+    }
+  }
+  if (!got)
+    return 0;
+  *vx = sign * s.angular_velocity.y;
+  *vy = sign * s.angular_velocity.x;
+  return 1;
+}
+
+static void pointer_clamp(float x, float y) {
+  g_px = x < 0.0f ? 0.0f : x > (float)(g_w - 1) ? (float)(g_w - 1) : x;
+  g_py = y < 0.0f ? 0.0f : y > (float)(g_h - 1) ? (float)(g_h - 1) : y;
+}
+
+/* `down`: the buttons pressed since the last poll. */
+static void pointer_poll(u64 buttons, u64 down, const float sticks[4], int touching) {
   const u64 now = armGetSystemTick();
   float dt = g_plast_poll ? (float)armTicksToNs(now - g_plast_poll) / 1e9f : 0.0f;
   g_plast_poll = now;
   if (dt > 0.05f)
     dt = 0.05f;
+  int used = 0;
+  /* a click of the right stick: gyro pointing on or off; Y: back to the middle */
+  if ((down & HidNpadButton_StickR) && g_gyro_ready) {
+    g_gyro_on = !g_gyro_on;
+    debugPrintf("[input] gyro pointing %s\n", g_gyro_on ? "on" : "off");
+    used = 1;
+  }
+  if (down & HidNpadButton_Y) {
+    pointer_clamp((float)g_w * 0.5f, (float)g_h * 0.5f);
+    used = 1;
+  }
+  /* the controller's motion, while the pointer shows (it never brings it up:
+   * a console carried about, or played by touch, would) */
+  if (g_gyro_on && g_pshown && !touching) {
+    float vx, vy;
+    if (gyro_read(&vx, &vy)) {
+      const float gain = GYRO_GAIN * dcr_config()->gyro_speed * ((float)g_h / 1080.0f) * dt;
+      if (fabsf(vx) < GYRO_DEADZONE)
+        vx = 0.0f;
+      if (fabsf(vy) < GYRO_DEADZONE)
+        vy = 0.0f;
+      if (vx != 0.0f || vy != 0.0f)
+        pointer_clamp(g_px + vx * gain, g_py + vy * gain);
+      if (fabsf(vx) > GYRO_AWAKE || fabsf(vy) > GYRO_AWAKE)
+        used = 1;
+    }
+  }
   /* whichever stick is pushed further */
   float sx = sticks[0], sy = sticks[1];
   if (sticks[2] * sticks[2] + sticks[3] * sticks[3] > sx * sx + sy * sy)
     sx = sticks[2], sy = sticks[3];
   const float mag = sqrtf(sx * sx + sy * sy);
-  int used = 0;
   if (mag > POINTER_DEADZONE) {
     /* slow near the centre for aiming, fast at the rim for crossing the screen */
     const float t = (mag > 1.0f ? 1.0f : mag) - POINTER_DEADZONE;
     const float speed = POINTER_SPEED * (0.25f + 0.75f * t / (1.0f - POINTER_DEADZONE)) *
                         (t / (1.0f - POINTER_DEADZONE)) * dcr_config()->pointer_speed *
                         ((float)g_h / 720.0f);
-    float x = g_px + sx / mag * speed * dt, y = g_py - sy / mag * speed * dt; /* stick y is up */
-    x = x < 0.0f ? 0.0f : x > (float)(g_w - 1) ? (float)(g_w - 1) : x;
-    y = y < 0.0f ? 0.0f : y > (float)(g_h - 1) ? (float)(g_h - 1) : y;
-    g_px = x;
-    g_py = y;
+    pointer_clamp(g_px + sx / mag * speed * dt, g_py - sy / mag * speed * dt); /* stick y is up */
     used = 1;
   }
   const int pressed = (buttons & POINTER_BUTTONS) != 0;
@@ -247,6 +338,8 @@ void sh_input_init(void) {
   hidInitializeTouchScreen();
   debugPrintf("[input] window %dx%d; the touch screen %s, the stick pointer %s\n", g_w, g_h,
               dcr_config()->touch ? "on" : "off", dcr_config()->pointer ? "on" : "off");
+  if (dcr_config()->pointer)
+    gyro_init();
 }
 
 void sh_input_poll(void) {
@@ -276,8 +369,11 @@ void sh_input_poll(void) {
                         .x = (float)ts.touches[i].x * (float)g_w / 1280.0f,
                         .y = (float)ts.touches[i].y * (float)g_h / 720.0f};
   }
+  static u64 before;
+  const u64 down = buttons & ~before;
+  before = buttons;
   if (dcr_config()->pointer) {
-    pointer_poll(buttons, sticks, n > 0);
+    pointer_poll(buttons, down, sticks, n > 0);
     if (g_ppressed)
       now[n++] = (Pt){.src = SRC_STICK, .x = g_px, .y = g_py};
   }

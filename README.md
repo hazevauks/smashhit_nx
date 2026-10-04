@@ -40,6 +40,8 @@ The game is played by touching where the ball should go.
 | Touch screen | as on a phone (handheld) |
 | Either stick | moves a pointer over the picture |
 | A, ZR, ZL | touch the screen where the pointer is |
+| Right stick click | gyro pointing on / off: the controller's motion moves the pointer |
+| Y | puts the pointer back in the middle of the screen |
 | D-pad, X | the game's own D-pad and select keys |
 | B, + | back (pause) |
 | − | menu |

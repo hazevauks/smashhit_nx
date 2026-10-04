@@ -16,6 +16,8 @@ typedef struct {
   int log_commands;    /* [debug] log_commands */
   char language[12];   /* [game] language: "auto", or a code ("en", "de") */
   int tv_mode;         /* [game] tv_mode: the game is told it runs on a television */
+  int gyro;            /* [controls] gyro_pointer: on when the game starts */
+  float gyro_speed;    /* [controls] gyro_speed */
 } DcrConfig;
 
 /* Read config.ini (writing it with the defaults, or adding missing options,

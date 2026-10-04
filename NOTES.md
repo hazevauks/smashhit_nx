@@ -93,6 +93,21 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
   (`sub sp, #0x20000`) e a thread do `opensles.c` do runtime tem 64 KB. Corrigido
   sem copiar o arquivo: `build/rt/opensles.o` é compilado com `threadCreate`
   trocado por `sh_audio_thread_create` (`source/sh_audio.c`), que dá 1 MB.
+- **Execução 2 (build 202610041921):** a correção da pilha entrou (`[audio] the
+  OpenSL thread: stack 1024 KB instead of 64 KB`); o jogo abre, chega ao menu,
+  toca som e fecha limpo pelo próprio `quit` (onPause → onStop →
+  surfaceDestroyed → terminateNativeCode, sem acionar o guarda de 5 s).
+  Nenhuma linha `[jni] unhandled`: a tabela de `sh_java.c` cobre tudo o que o
+  motor chamou. OpenSL: 44,1 kHz estéreo 16 bits, reamostrado para 48 kHz.
+  507 aberturas de asset, 189 "não encontradas": o motor procura cada arquivo em
+  várias pastas em sequência (ruído, não erro). Heap em uso: 271 MB.
+  Quadros longos só no carregamento inicial (quadros 21-71, 270-670 ms).
+- **Giroscópio:** o jogo não usa sensor nenhum (nenhum import `ASensor`), então
+  só entra pelo port, movendo a mira: `hidGetSixAxisSensorHandles` /
+  `hidGetSixAxisSensorStates` (portátil, Pro Controller, par de Joy-Cons), com
+  os eixos e sinais do port de Angry Birds Space (`abs_cursor.c`), já provados
+  em hardware. Clique do analógico direito liga/desliga; Y recentra.
+  `[controls] gyro_pointer` e `gyro_speed` no config.ini. **A testar.**
 - O motor também pergunta `isphone`, que o `CommandHandler` do Java não tem
   (responde `""`); está na tabela só para não poluir o log.
 - `dlopen(libcrashlytics.so)` falha e o motor segue (o Crashlytics fica desligado).
@@ -103,8 +118,9 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
       303 ligados, 1 fraco nulo, 0 faltando; NSP e NRO nos artefatos
 - [ ] Primeiro teste no hardware: mandar `debug.log` e `crash.log`; a lista de
       métodos Java "unhandled" do log é a lista de tarefas de `sh_java.c`
-- [ ] Conferir o formato pedido ao OpenSL ES (taxa, canais) no log do
-      `opensles.c`
+- [x] Formato pedido ao OpenSL ES: 44,1 kHz, estéreo, 16 bits (execução 2)
+- [ ] Testar o giroscópio (sentido dos eixos, velocidade, deriva) nos três
+      tipos de controle
 - [ ] Conferir o mapeamento de botões (o que `BACK`/`MENU`/D-pad fazem no jogo)
 - [ ] Conferir onde o jogo grava o save (`user://`) e se persiste
 - [ ] Ícone do launcher: hoje um provisório desenhado pelo port
