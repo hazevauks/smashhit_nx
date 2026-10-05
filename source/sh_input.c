@@ -204,8 +204,8 @@ static u64 g_plast_poll;
 /* ------------------------------------------------------------------- gyro */
 /* The game knows no motion sensor (it imports none of ASensor): the
  * controller's is the port's own way of moving the pointer, as in the
- * runtime's Angry Birds Space port, whose handles, axes and signs these are
- * (proven on hardware there): the console with its Joy-Cons attached, player
+ * runtime's Angry Birds Space port, whose handles and axes these are (proven
+ * on hardware there): the console with its Joy-Cons attached, player
  * 1's Pro Controller, player 1's pair of Joy-Cons (the right one, else the
  * left). Turning the controller left-right moves the pointer across, up-down
  * moves it up and down, by its angular velocity (in turns a second). */
@@ -257,8 +257,12 @@ static int gyro_read(float *vx, float *vy) {
   }
   if (!got)
     return 0;
-  *vx = sign * s.angular_velocity.y;
-  *vy = sign * s.angular_velocity.x;
+  /* Across as in that port. Up and down the other way round: with its sign
+   * the pointer went down when the controller was tipped up (hardware, the
+   * Joy-Cons on the console). [controls] gyro_invert_x / _y turn either
+   * over, for a controller that reads differently. */
+  *vx = sign * s.angular_velocity.y * (dcr_config()->gyro_invert_x ? -1.0f : 1.0f);
+  *vy = -sign * s.angular_velocity.x * (dcr_config()->gyro_invert_y ? -1.0f : 1.0f);
   return 1;
 }
 

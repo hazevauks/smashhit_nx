@@ -102,6 +102,15 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
   507 aberturas de asset, 189 "não encontradas": o motor procura cada arquivo em
   várias pastas em sequência (ruído, não erro). Heap em uso: 271 MB.
   Quadros longos só no carregamento inicial (quadros 21-71, 270-670 ms).
+- **Execução 3 (build 202610041936), ~170 s jogando:** 60 fps estáveis depois do
+  carregamento (59,3-60,1 nos relatórios de 10 s), áudio a 44,1 kHz com 0
+  underruns e 0 envios falhos em 139 s, heap estável em ~310-320 MB, 23 objetos
+  Java (sem vazamento). O jogo pausa (`popup_shown type pause`) e manda placar
+  (`updateleaderboard`, descartado). Sensores de movimento prontos nos três
+  tipos de controle; o giroscópio funciona, mas **o eixo Y saiu invertido** no
+  modo portátil com os sinais do port de Angry Birds Space: invertido no
+  código, e `gyro_invert_x` / `gyro_invert_y` no config.ini para qualquer
+  controle que leia diferente.
 - **Giroscópio:** o jogo não usa sensor nenhum (nenhum import `ASensor`), então
   só entra pelo port, movendo a mira: `hidGetSixAxisSensorHandles` /
   `hidGetSixAxisSensorStates` (portátil, Pro Controller, par de Joy-Cons), com
@@ -119,8 +128,9 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
 - [ ] Primeiro teste no hardware: mandar `debug.log` e `crash.log`; a lista de
       métodos Java "unhandled" do log é a lista de tarefas de `sh_java.c`
 - [x] Formato pedido ao OpenSL ES: 44,1 kHz, estéreo, 16 bits (execução 2)
-- [ ] Testar o giroscópio (sentido dos eixos, velocidade, deriva) nos três
-      tipos de controle
+- [ ] Giroscópio: confirmar o eixo Y corrigido no portátil; testar Pro
+      Controller e par de Joy-Cons soltos (sentido, velocidade, deriva)
+- [x] Desempenho: 60 fps e áudio sem underruns (execução 3)
 - [ ] Conferir o mapeamento de botões (o que `BACK`/`MENU`/D-pad fazem no jogo)
 - [ ] Conferir onde o jogo grava o save (`user://`) e se persiste
 - [ ] Ícone do launcher: hoje um provisório desenhado pelo port

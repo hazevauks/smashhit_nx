@@ -18,6 +18,8 @@ typedef struct {
   int tv_mode;         /* [game] tv_mode: the game is told it runs on a television */
   int gyro;            /* [controls] gyro_pointer: on when the game starts */
   float gyro_speed;    /* [controls] gyro_speed */
+  int gyro_invert_x;   /* [controls] gyro_invert_x */
+  int gyro_invert_y;   /* [controls] gyro_invert_y */
 } DcrConfig;
 
 /* Read config.ini (writing it with the defaults, or adding missing options,

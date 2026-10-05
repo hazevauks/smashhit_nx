@@ -73,6 +73,10 @@ static const CfgOpt k_opts[] = {
     {"controls", "gyro_speed", "1.0",
      "How far the pointer moves for a turn of the controller: 0.25 to 4.0.", CFG_FLOAT, NULL,
      &g_cfg.gyro_speed, 0.25f, 4.0f},
+    {"controls", "gyro_invert_x", "false",
+     "Gyro pointing, left and right the other way round.", CFG_BOOL, NULL, &g_cfg.gyro_invert_x},
+    {"controls", "gyro_invert_y", "false",
+     "Gyro pointing, up and down the other way round.", CFG_BOOL, NULL, &g_cfg.gyro_invert_y},
     /* [config] version = 1: the engine's row, last (CfgTable.version) */
 };
 
