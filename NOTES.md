@@ -147,9 +147,23 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
 - [x] Save: a versão gratuita não guarda progresso (os checkpoints são do
       premium, que não é liberado). Falta só ver o que ela grava em `data/`
       (config, recorde): `dcr_path_traced` agora registra os acessos a essa pasta
-- [ ] Ícone do launcher: hoje um provisório desenhado pelo port
+- [x] Ícone do launcher: o do jogo, fornecido pelo autor do port (256x256, sem
+      metadados); o README diz que é arte da Mediocre, fora da licença MIT
 - [ ] `PORT_NPDM_PROGRAM_ID` (0x01000000000010E4): confirmar que não colide
       com outro port
+
+## Release 0.1.0 (processo, como no dantheman_nx)
+
+- Identidade dos commits: `334693818+hazevauks@users.noreply.github.com`
+  (config local do repositório). O histórico de antes da release foi reescrito
+  com `git filter-branch --env-filter` (só autor e committer; árvore idêntica,
+  `7f3a192`); o original está em `_refs/smashhit_nx-pre-public.bundle`
+  (ignorado pelo git).
+- Conferido antes de publicar: nenhum e-mail pessoal nem nome real em arquivos
+  rastreados, mensagens de commit ou no ícone.
+- Destino: o repositório privado vira `smashhit_nx-private` (remoto
+  `private-archive`) com o histórico reescrito; um `smashhit_nx` público novo
+  recebe `main`, a tag `v0.1.0` e a release (zip do cartão SD + NRO).
 
 ## Ferramentas (`tools/`)
 

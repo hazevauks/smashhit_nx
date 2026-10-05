@@ -5,7 +5,7 @@
 #---------------------------------------------------------------------------------
 APP_TITLE    := Smash Hit
 APP_AUTHOR   := hazevauks
-APP_VERSION  := 0.0.1
+APP_VERSION  := 0.1.0
 TARGET       := smashhit_nx
 PORT_PAYLOAD := smashhit_nx
 LAUNCHER_SOURCES :=

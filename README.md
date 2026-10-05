@@ -36,10 +36,10 @@ The game is played by touching where the ball should go.
 | Switch | Game |
 | --- | --- |
 | Touch screen | as on a phone (handheld) |
-| Either stick | moves a pointer over the picture |
-| A, ZR, ZL | touch the screen where the pointer is |
-| Right stick click | gyro pointing on / off: the controller's motion moves the pointer |
+| Either stick | moves the pointer (the aim) over the picture |
+| A, ZR, ZL | throw a ball where the pointer is (a touch there, held while the button is) |
 | Y | puts the pointer back in the middle of the screen |
+| Right stick click (R3) | gyro aiming on / off: moving the controller moves the pointer |
 | D-pad, X | the game's own D-pad and select keys |
 | B, + | back (pause) |
 | − | menu |
@@ -76,7 +76,8 @@ folder, [mesa32](https://github.com/aks796/mesa32)'s `lib/` and `include/` in
 ## Credits
 
 - The game: Mediocre. This port is not affiliated with or endorsed by them.
-  "Smash Hit" is Mediocre's name, used only to identify the game.
+  "Smash Hit" and the launcher's icon are Mediocre's name and artwork, shown
+  only to identify the game.
 - [android32](https://github.com/aks796/android32),
   [libnx32](https://github.com/aks796/libnx32) and
   [mesa32](https://github.com/aks796/mesa32) by aks796, and the projects
@@ -86,5 +87,5 @@ folder, [mesa32](https://github.com/aks796/mesa32)'s `lib/` and `include/` in
 
 ## License
 
-MIT for the port's own code: see [LICENSE](LICENSE). The game and its name
-are not covered by it.
+MIT for the port's own code: see [LICENSE](LICENSE). The game, its name and
+its artwork (`launcher/icon.jpg`) are not covered by it.
