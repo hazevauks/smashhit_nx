@@ -25,6 +25,7 @@ static DcrConfig g_cfg = {
     .tv_mode = 0,
     .gyro = 0,
     .gyro_speed = 1.0f,
+    .gyro_accel = 2.0f,
 };
 
 const DcrConfig *dcr_config(void) { return &g_cfg; }
@@ -77,6 +78,19 @@ static const CfgOpt k_opts[] = {
      "Gyro pointing, left and right the other way round.", CFG_BOOL, NULL, &g_cfg.gyro_invert_x},
     {"controls", "gyro_invert_y", "false",
      "Gyro pointing, up and down the other way round.", CFG_BOOL, NULL, &g_cfg.gyro_invert_y},
+    {"controls", "pointer_style", "cross",
+     "What the pointer looks like: cross, dot or ball. A click of the left stick\n"
+     "# goes to the next one while playing, and that choice is kept here.",
+     CFG_CHOICE, "cross,dot,ball", &g_cfg.pointer_style},
+    {"controls", "gyro_space", "world",
+     "What turning the controller left and right means. world: a turn about the\n"
+     "# vertical, however the controller is held (flat, upright, in between).\n"
+     "# local: a turn about the controller's own top-to-bottom axis, as in 0.1.0.",
+     CFG_CHOICE, "world,local", &g_cfg.gyro_space},
+    {"controls", "gyro_acceleration", "2.0",
+     "Gyro aiming: how much further a fast turn carries the pointer than a slow\n"
+     "# one, 1.0 (the same) to 4.0. Slow turns stay precise either way.",
+     CFG_FLOAT, NULL, &g_cfg.gyro_accel, 1.0f, 4.0f},
     /* [config] version = 1: the engine's row, last (CfgTable.version) */
 };
 

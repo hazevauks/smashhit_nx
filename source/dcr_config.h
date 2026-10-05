@@ -20,6 +20,9 @@ typedef struct {
   float gyro_speed;    /* [controls] gyro_speed */
   int gyro_invert_x;   /* [controls] gyro_invert_x */
   int gyro_invert_y;   /* [controls] gyro_invert_y */
+  int pointer_style;   /* [controls] pointer_style: 0 cross, 1 dot, 2 ball */
+  int gyro_space;      /* [controls] gyro_space: 0 world, 1 local */
+  float gyro_accel;    /* [controls] gyro_acceleration */
 } DcrConfig;
 
 /* Read config.ini (writing it with the defaults, or adding missing options,

@@ -11,7 +11,20 @@ Process:
 
 ## Ready for changelog
 
-(nothing yet)
+For 0.1.3. **Not yet tested on hardware.**
+
+- [ ] Gyro aiming is steadier and easier: the pointer stays on the screen
+  while the gyro is on (it used to disappear, and the gyro with it, after a
+  few seconds of slow aiming); slow turns are smoothed and precise, fast
+  ones carry further (`[controls] gyro_acceleration`).
+- [ ] Turning left and right now means a turn about the vertical, however
+  the controller is held: flat, upright or in between (`[controls]
+  gyro_space = local` is the old way).
+- [ ] Three pointers: the cross, a dot and a ball. A click of the left stick
+  (L3) goes to the next one (`[controls] pointer_style`).
+- [ ] What R3 (gyro on / off) and L3 (the pointer) choose is kept in
+  config.ini.
+- [ ] The repository's notes are in English.
 
 ## Released
 

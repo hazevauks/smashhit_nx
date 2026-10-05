@@ -1,183 +1,214 @@
-# smashhit_nx — notas do port
+# smashhit_nx — port notes
 
-Port de **Smash Hit 1.5.14** (com.mediocre.smashhit, versionCode 1051400,
-armeabi-v7a) para Nintendo Switch sobre o runtime
-[android32](https://github.com/aks796/android32) (submódulo em `runtime/`,
-commit `50b352c`).
+A port of **Smash Hit 1.5.14** (com.mediocre.smashhit, versionCode 1051400,
+armeabi-v7a) to the Nintendo Switch on the
+[android32](https://github.com/aks796/android32) runtime (a submodule at
+`runtime/`, commit `50b352c`).
 
-Estado: **compila no GitHub Actions (primeiro build limpo, sem avisos); ainda não
-testado no hardware.** Build em `.github/workflows/build.yml`; nesta máquina não
-há Docker, Python nem compilador.
+Status: **released (0.1.0); runs on hardware at 60 fps with sound.** It is
+built by GitHub Actions (`.github/workflows/build.yml`): the machine it is
+developed on has no Docker, Python or compiler.
 
-## O jogo
+## The game
 
 | | |
 | --- | --- |
-| Motor | próprio da Mediocre ("Qi": `QiRenderer`, `QiAudio`, `QiInput`), com Lua, libpng, libjpeg, Vorbis e libc++ embutidos (`libsmashhit.so`, 2,3 MB, Thumb-2) |
-| Entrada no Android | `GameActivity` do Google (AGDK) + `android_main` — não é `NativeActivity` |
-| Gráficos | OpenGL ES 2 (69 funções `gl*`) com EGL próprio (`Renderer::initContext`) |
-| Áudio | OpenSL ES apenas (`QiAudioDeviceOpenSl`: engine, output mix, um player com buffer queue) |
-| `DT_NEEDED` | libc, libm, libdl, liblog, libandroid, libnativewindow, libEGL, libGLESv2, libOpenSLES — só bibliotecas do sistema |
-| Imports | 373; 69 `gl*`, 303 ligados, 1 fraco deixado nulo (`__cxa_thread_atexit_impl`) |
-| Símbolos | 5 955 exportados (C++ com nomes) |
-| ELF | relocações REL simples, só `DT_GNU_HASH` (sem `DT_HASH`), 3 `PT_LOAD`, 11 construtores |
-| Outras libs | `libcrashlytics*.so`, `libdatastore_shared_counter.so` — não são carregadas |
-| Assets | 2 421 arquivos em `assets/`, **todos armazenados sem compressão** (por isso os nomes `*.mp3`) |
+| Engine | Mediocre's own ("Qi": `QiRenderer`, `QiAudio`, `QiInput`), with Lua, libpng, libjpeg, Vorbis and libc++ linked in (`libsmashhit.so`, 2.3 MB, Thumb-2) |
+| Android entry | Google's `GameActivity` (AGDK) + `android_main` — not `NativeActivity` |
+| Graphics | OpenGL ES 2 (69 `gl*` functions) with its own EGL (`Renderer::initContext`) |
+| Sound | OpenSL ES only (`QiAudioDeviceOpenSl`: an engine, an output mix, one buffer-queue player) |
+| `DT_NEEDED` | libc, libm, libdl, liblog, libandroid, libnativewindow, libEGL, libGLESv2, libOpenSLES — system libraries only |
+| Imports | 373; 69 `gl*`, 303 bound, 1 weak one left NULL (`__cxa_thread_atexit_impl`) |
+| Symbols | 5,955 exported (named C++) |
+| ELF | plain REL relocations, `DT_GNU_HASH` only (no `DT_HASH`), 3 `PT_LOAD`, 11 constructors |
+| Other libraries | `libcrashlytics*.so`, `libdatastore_shared_counter.so` — not loaded |
+| Assets | 2,421 files under `assets/`, **all stored uncompressed** (hence the `*.mp3` names) |
 
-**Atenção:** o APK também traz `arm64-v8a`. O guia da comunidade manda esses
-jogos pela rota 64 bits; este port usa a biblioteca `armeabi-v7a` de propósito
-(decisão do autor do port).
+**Note:** the APK also carries `arm64-v8a`. The community guide sends such
+games down the 64-bit route; this port uses the `armeabi-v7a` library on
+purpose (the port author's decision).
 
-O runtime cobria todos os imports menos 31: 13 entram como `PASSTHROUGH` em
-`tools/imports.cfg`, os demais têm shim em `source/sh_libc.c` (os `_chk` do
-FORTIFY, `stdin`/`stdout`/`stderr`, `__register_atfork`,
-`__android_log_assert`) e `source/sh_assets.c` (`AAssetManager`).
+The runtime had all the imports but 31: 13 are `PASSTHROUGH` in
+`tools/imports.cfg`, the rest have shims in `source/sh_libc.c` (FORTIFY's
+`_chk` functions, `stdin` / `stdout` / `stderr`, `__register_atfork`,
+`__android_log_assert`) and `source/sh_assets.c` (`AAssetManager`).
 
-## Sequência de inicialização (do Java, classes2.dex / classes3.dex)
+## Start-up sequence (from the Java, classes2.dex / classes3.dex)
 
-1. `MainActivity.onCreate` → `jniCrashlyticsInit()` (nativo vazio)
-2. `GameActivity.onCreate` → `System.loadLibrary("smashhit")` → construtores
+1. `MainActivity.onCreate` → `jniCrashlyticsInit()` (an empty native)
+2. `GameActivity.onCreate` → `System.loadLibrary("smashhit")` → constructors
 3. `initializeNativeCode(filesDir, obbDir, externalFilesDir, assets, savedState)`
-   → `GameActivity_register` (RegisterNatives dos outros nativos), pipe no
-   looper da thread de UI, thread do app rodando `android_main`
+   → `GameActivity_register` (RegisterNatives for the other natives), a pipe
+   on the UI thread's looper, the app thread running `android_main`
 4. `onStartNative`, `onResumeNative`, `onSurfaceCreatedNative`,
    `onSurfaceChangedNative(fmt, w, h)`, `onWindowFocusChangedNative(true)`
-5. por evento: `onTouchEventNative(handle, MotionEvent)`,
+5. per event: `onTouchEventNative(handle, MotionEvent)`,
    `onKeyDownNative` / `onKeyUpNative(handle, KeyEvent)`
-6. saída: `onPauseNative`, `onStopNative`, `onSurfaceDestroyedNative`,
+6. leaving: `onPauseNative`, `onStopNative`, `onSurfaceDestroyedNative`,
    `terminateNativeCode`
 
-Não há `JNI_OnLoad`. A thread principal do port faz o papel da thread de UI
-(`source/sh_activity.c`); o jogo roda na thread do glue
+There is no `JNI_OnLoad`. The port's main thread plays the UI thread
+(`source/sh_activity.c`); the game runs on the glue's thread
 (`android_main` → `Renderer::handleInput` / `render` → `eglSwapBuffers`).
 
-## Leitura de arquivos
+## Reading files
 
-`QiFileInputStream::open` (desmontado): `AAssetManager_open` →
+`QiFileInputStream::open` (disassembled): `AAssetManager_open` →
 `AAsset_openFileDescriptor(&start, &length)` → `dup` → `fdopen("rb")` →
-`close` → `fseek(start)`. Ou seja, o motor lê os assets direto de dentro do
-APK por descritor de arquivo. `sh_assets.c` indexa o diretório central uma
-vez e devolve um descritor do próprio APK (pelo `open` do runtime, com o
-cache de APK) e a posição do arquivo. Nada é extraído.
+`close` → `fseek(start)`. So the engine reads its assets straight out of the
+APK through a file descriptor. `sh_assets.c` indexes the central directory
+once and answers with a descriptor of the APK itself (through the runtime's
+`open`, with its APK cache) and the file's place in it. Nothing is extracted.
 
-## Canal Java: `MainActivity.command(String)`
+## The Java channel: `MainActivity.command(String)`
 
-Tudo o que o motor pede ao Java passa por `JavaMessenger::sendCommand` →
-`command("nome arg arg")` → `CommandHandler.handleCommand`, que responde
-texto. A tabela completa (38 comandos) está em `source/sh_command.c`,
-respondida como um telefone offline e sem login: loja indisponível, nada
-comprado, sem anúncios, sem Play Games, remote config nunca buscado.
-**Nada do que o jogo vende é liberado** (`isproductowned` → `false`).
+Everything the engine asks the Java goes through
+`JavaMessenger::sendCommand` → `command("name arg arg")` →
+`CommandHandler.handleCommand`, which answers with text. The whole table (38
+commands, plus `isphone`, which the engine asks and the Java does not know)
+is in `source/sh_command.c`, answered as a phone that is offline and signed
+in to nothing: no store, nothing owned, no ads, no Play Games, remote config
+never fetched. **Nothing the game sells is unlocked** (`isproductowned` →
+`false`). The free game keeps no progress between runs: its checkpoints
+belong to the paid upgrade.
 
-## Entrada
+## Input
 
-- Toque: `MotionEvent` lido pelo glue por JNI (`getAction`, `getPointerId`,
-  `getAxisValue(axis, i)`…); posições em pixels da janela. `handleInput`
-  trata DOWN/POINTER_DOWN, UP/POINTER_UP e MOVE.
-- Teclas que `handleInput` conhece (tabela de saltos em +0x184):
-  `DPAD_UP/DOWN/LEFT/RIGHT` → botões 6/7/4/5 do `QiInput`, `DPAD_CENTER` e
-  `BUTTON_A` → 8, `L1`/`L2`/`R1`/`R2` → 12/13/14/15, `BACK` → 16, `MENU` → 17.
-- O motor não tem analógico: o port desenha um ponteiro (mira) movido pelo
-  analógico e A/ZR/ZL tocam onde ele está (`source/sh_input.c`). A mira é
-  desenhada com `glScissor` + `glClear`, sem tocar em programa, buffers ou
-  texturas do jogo.
-- `[game] tv_mode` responde `istv` → `true` (modo Android TV do jogo):
-  experimental, a testar.
+- Touch: a `MotionEvent` the glue reads through JNI (`getAction`,
+  `getPointerId`, `getAxisValue(axis, i)`...); positions are pixels of the
+  window. `handleInput` handles DOWN / POINTER_DOWN, UP / POINTER_UP and MOVE.
+- Keys `handleInput` knows (its jump table at +0x184):
+  `DPAD_UP/DOWN/LEFT/RIGHT` → `QiInput` buttons 6/7/4/5, `DPAD_CENTER` and
+  `BUTTON_A` → 8, `L1` / `L2` / `R1` / `R2` → 12/13/14/15, `BACK` → 16,
+  `MENU` → 17.
+- The engine has no analogue stick: the port draws a pointer (the aim) that
+  either stick moves, and A / ZR / ZL touch the screen where it is
+  (`source/sh_input.c`). Y puts it back in the middle; a click of the left
+  stick changes what it looks like (cross, dot, ball). It is drawn with
+  `glScissor` + `glClear` only, touching none of the game's programs, buffers
+  or textures.
+- `[game] tv_mode` answers `istv` → `true` (the game's Android TV mode):
+  experimental, untested.
 
-## Achados dos testes no hardware
+### Gyro aiming
 
-- **Execução 1 (build 202610041910):** o motor carrega, registra os 21 nativos
-  do `GameActivity`, cria o contexto GLES 2 (nouveau, Mesa 20.1), abre o OpenSL
-  (44,1 kHz estéreo 16 bits, blocos de 4096 bytes) e começa a ler o APK. Crash
-  na thread de áudio: `QiAudio::fillBuffer` reserva 128 KB de pilha na entrada
-  (`sub sp, #0x20000`) e a thread do `opensles.c` do runtime tem 64 KB. Corrigido
-  sem copiar o arquivo: `build/rt/opensles.o` é compilado com `threadCreate`
-  trocado por `sh_audio_thread_create` (`source/sh_audio.c`), que dá 1 MB.
-- **Execução 2 (build 202610041921):** a correção da pilha entrou (`[audio] the
-  OpenSL thread: stack 1024 KB instead of 64 KB`); o jogo abre, chega ao menu,
-  toca som e fecha limpo pelo próprio `quit` (onPause → onStop →
-  surfaceDestroyed → terminateNativeCode, sem acionar o guarda de 5 s).
-  Nenhuma linha `[jni] unhandled`: a tabela de `sh_java.c` cobre tudo o que o
-  motor chamou. OpenSL: 44,1 kHz estéreo 16 bits, reamostrado para 48 kHz.
-  507 aberturas de asset, 189 "não encontradas": o motor procura cada arquivo em
-  várias pastas em sequência (ruído, não erro). Heap em uso: 271 MB.
-  Quadros longos só no carregamento inicial (quadros 21-71, 270-670 ms).
-- **Execução 3 (build 202610041936), ~170 s jogando:** 60 fps estáveis depois do
-  carregamento (59,3-60,1 nos relatórios de 10 s), áudio a 44,1 kHz com 0
-  underruns e 0 envios falhos em 139 s, heap estável em ~310-320 MB, 23 objetos
-  Java (sem vazamento). O jogo pausa (`popup_shown type pause`) e manda placar
-  (`updateleaderboard`, descartado). Sensores de movimento prontos nos três
-  tipos de controle; o giroscópio funciona, mas **o eixo Y saiu invertido** no
-  modo portátil com os sinais do port de Angry Birds Space: invertido no
-  código, e `gyro_invert_x` / `gyro_invert_y` no config.ini para qualquer
-  controle que leia diferente.
-- **Execução 4 (build 202610050016), ~150 s:** a atualização pelo NRO funcionou
-  (1936 → 0016, reinício sozinho) e o config.ini recebeu as 2 opções novas. Eixo
-  Y do giroscópio correto (confirmado pelo autor). 60 fps, áudio com 0
-  underruns, heap 300-314 MB, 21-23 objetos Java; nenhum `unhandled`, nenhum
-  comando desconhecido, nenhum erro de GL. Um quadro de 247 ms ao chegar a um
-  checkpoint (carga do trecho seguinte). O log termina sem a sequência de
-  saída e sem nenhuma linha de foco perdido: fechar pelo menu HOME congela o
-  processo e o encerra, como nos outros ports — o caminho de pausa/retomada
-  (`onPauseNative` / `onResumeNative`) **ainda não apareceu em log nenhum**.
-- IDs de programa vistos em outros ports no GitHub: 100E, 100F, 1010, 1015,
-  10D7, 1F1A. O 10E4 deste port não colide com nenhum deles (a busca só
-  alcança repositórios públicos indexados).
-- **Giroscópio:** o jogo não usa sensor nenhum (nenhum import `ASensor`), então
-  só entra pelo port, movendo a mira: `hidGetSixAxisSensorHandles` /
-  `hidGetSixAxisSensorStates` (portátil, Pro Controller, par de Joy-Cons), com
-  os eixos e sinais do port de Angry Birds Space (`abs_cursor.c`), já provados
-  em hardware. Clique do analógico direito liga/desliga; Y recentra.
-  `[controls] gyro_pointer` e `gyro_speed` no config.ini. **A testar.**
-- O motor também pergunta `isphone`, que o `CommandHandler` do Java não tem
-  (responde `""`); está na tabela só para não poluir o log.
-- `dlopen(libcrashlytics.so)` falha e o motor segue (o Crashlytics fica desligado).
+The game uses no sensor (it imports none of `ASensor`), so the gyro is the
+port's own: `hidGetSixAxisSensorHandles` / `hidGetSixAxisSensorStates` for
+the console with its Joy-Cons attached, a Pro Controller and a pair of
+Joy-Cons. A click of the right stick turns it on and off.
 
-## Pendências
+0.1.0 took the reference ports' mapping as it was (the turn about the
+sensor's y axis moves the pointer across, the turn about x moves it up and
+down) and added two things of its own that made it uncomfortable: the gyro
+only worked while the pointer was showing, and the pointer was put away after
+six seconds without a button, a stick or a turn faster than 18 degrees a
+second — so slow aiming made the aim disappear; and a hard dead zone on each
+axis made fine movements stick. The references (the runtime's Angry Birds
+Space port, `abs_cursor.c`; ChanseyIsTheBest's `nx_pointer.c`) move the
+pointer whenever the gyro is on, keep it on the screen, and use a dead zone a
+tenth the size.
 
-- [x] Repositório privado e primeiro build no GitHub Actions: 304 imports,
-      303 ligados, 1 fraco nulo, 0 faltando; NSP e NRO nos artefatos
-- [ ] Primeiro teste no hardware: mandar `debug.log` e `crash.log`; a lista de
-      métodos Java "unhandled" do log é a lista de tarefas de `sh_java.c`
-- [x] Formato pedido ao OpenSL ES: 44,1 kHz, estéreo, 16 bits (execução 2)
-- [ ] Giroscópio: confirmar o eixo Y corrigido no portátil; testar Pro
-      Controller e par de Joy-Cons soltos (sentido, velocidade, deriva)
-- [x] Desempenho: 60 fps e áudio sem underruns (execução 3)
-- [ ] Conferir o mapeamento de botões (o que `BACK`/`MENU`/D-pad fazem no jogo)
-- [x] Save: a versão gratuita não guarda progresso (os checkpoints são do
-      premium, que não é liberado). Falta só ver o que ela grava em `data/`
-      (config, recorde): `dcr_path_traced` agora registra os acessos a essa pasta
-- [x] Ícone do launcher: o do jogo, fornecido pelo autor do port (256x256, sem
-      metadados); o README diz que é arte da Mediocre, fora da licença MIT
-- [ ] `PORT_NPDM_PROGRAM_ID` (0x01000000000010E4): confirmar que não colide
-      com outro port
+Since 0.1.3:
 
-## Release 0.1.0 (processo, como no dantheman_nx)
+- the pointer stays on the screen while the gyro is on, and the gyro always
+  moves it (but while a finger is on the touch screen);
+- a soft dead zone (nothing below 0.4 degrees a second, all of it from 2.2),
+  smoothing for slow turns only, and fast turns that carry further
+  (`[controls] gyro_acceleration`);
+- "world" space (`[controls] gyro_space`): left and right is the turn about
+  the vertical, found from the accelerometer as the Labyrinth 2 port reads
+  it, so it works the same with the controller flat, upright or in between.
+  Whether the accelerometer reads gravity or the reaction to it is settled
+  from the first half second of an ordinary hold and logged (`[input] gyro:
+  controller N at rest reads ...`). `local` is 0.1.0's mapping.
 
-- Identidade dos commits: `334693818+hazevauks@users.noreply.github.com`
-  (config local do repositório). O histórico de antes da release foi reescrito
-  com `git filter-branch --env-filter` (só autor e committer; árvore idêntica,
-  `7f3a192`); o original está em `_refs/smashhit_nx-pre-public.bundle`
-  (ignorado pelo git).
-- Conferido antes de publicar: nenhum e-mail pessoal nem nome real em arquivos
-  rastreados, mensagens de commit ou no ícone.
-- Destino: o repositório privado vira `smashhit_nx-private` (remoto
-  `private-archive`) com o histórico reescrito; um `smashhit_nx` público novo
-  recebe `main`, a tag `v0.1.0` e a release (zip do cartão SD + NRO).
+## Findings from hardware runs
 
-## Ferramentas (`tools/`)
+- **Run 1 (build 202610041910):** the engine loads, registers
+  `GameActivity`'s 21 natives, makes the GLES 2 context (nouveau, Mesa 20.1),
+  opens OpenSL (44.1 kHz stereo 16-bit, 4096-byte blocks) and starts reading
+  the APK. A crash on the audio thread: `QiAudio::fillBuffer` takes 128 KB of
+  stack on entry (`sub sp, #0x20000`) and the thread of the runtime's
+  `opensles.c` has 64 KB. Fixed without copying the file:
+  `build/rt/opensles.o` is built with `threadCreate` renamed to
+  `sh_audio_thread_create` (`source/sh_audio.c`), which gives it 1 MB.
+- **Run 2 (build 202610041921):** the stack fix is in (`[audio] the OpenSL
+  thread: stack 1024 KB instead of 64 KB`); the game starts, reaches its
+  menu, plays sound and closes cleanly on its own `quit` (onPause → onStop →
+  surfaceDestroyed → terminateNativeCode, without the 5 s guard). No `[jni]
+  unhandled` line: `sh_java.c`'s table covers everything the engine called.
+  507 asset opens, 189 "not found": the engine looks for each file in several
+  folders in turn (noise, not an error). Long frames only while loading
+  (frames 21-71, 270-670 ms).
+- **Run 3 (build 202610041936), ~170 s of play:** a steady 60 fps after
+  loading (59.3-60.1 in the 10 s reports), sound at 44.1 kHz with 0 underruns
+  and 0 failed submits in 139 s, the heap steady at ~310-320 MB, 23 Java
+  objects (no leak). The game pauses (`popup_shown type pause`) and sends a
+  score (`updateleaderboard`, dropped). The gyro works, but **up and down
+  came out inverted** in handheld mode with the Angry Birds Space port's
+  signs: turned over in the code, with `gyro_invert_x` / `gyro_invert_y` in
+  config.ini for a controller that reads differently.
+- **Run 4 (build 202610050016), ~150 s:** the update from the NRO worked
+  (1936 → 0016, restarting by itself) and config.ini got the 2 new options.
+  The gyro's up and down are right (confirmed by the port's author). 60 fps,
+  0 audio underruns, heap 300-314 MB, 21-23 Java objects; no `unhandled`, no
+  unknown command, no GL error. One 247 ms frame on reaching a checkpoint
+  (the next stretch loading). The log ends without the leaving sequence and
+  without any focus line: closing from the HOME menu freezes the process and
+  ends it, as in the other ports — the pause / resume path (`onPauseNative` /
+  `onResumeNative`) **has not appeared in any log yet**.
+- Program ids seen in other ports on GitHub: 100E, 100F, 1010, 1015, 10D7,
+  1F1A. This port's 10E4 collides with none of them (the search only reaches
+  indexed public repositories).
+- `dlopen(libcrashlytics.so)` fails and the engine goes on (Crashlytics stays
+  off).
 
-Scripts Perl (vindos do dantheman_nx), no lugar de binutils/Python:
+## To do
+
+- [ ] 0.1.3's gyro on hardware: the direction of "across" in world space
+      (the log's `[input] gyro:` lines tell), how the smoothing and the
+      acceleration feel, the three pointers
+- [ ] The gyro with a Pro Controller and a detached pair of Joy-Cons
+- [ ] HOME and sleep: `onPauseNative` / `onResumeNative` in a hardware log
+- [ ] Docked 1080p: the pointer's size and speed
+- [ ] What `BACK` / `MENU` / the D-pad do in each of the game's screens
+- [ ] What the free game writes under `data/` (settings, best distance):
+      `dcr_path_traced` logs the first accesses to that folder
+- [ ] `[game] tv_mode`
+
+## Releasing (as for dantheman_nx)
+
+- Commit identity: `334693818+hazevauks@users.noreply.github.com` (the
+  repository's local config). The history from before the first release was
+  rewritten with `git filter-branch --env-filter` (author and committer only;
+  the same tree, `7f3a192`); the original is in
+  `_refs/smashhit_nx-pre-public.bundle` (git-ignored).
+- Checked before publishing: no personal e-mail address or real name in
+  tracked files, commit messages or the icon.
+- The private repository became `smashhit_nx-private` (remote
+  `private-archive`) with the rewritten history; a new public `smashhit_nx`
+  has `main`, the tags and the releases (the SD-card zip and the NRO, both
+  from the CI build of the release commit).
+- The launcher's icon is the game's, supplied by the port's author (256x256,
+  no metadata); the README says it is Mediocre's artwork, outside the MIT
+  licence.
+
+## Tools (`tools/`)
+
+Perl scripts (from dantheman_nx), in place of binutils and Python:
 
 - `elfinfo.pl <lib.so> [needed|exports|imports|jni|all]`
-- `dexinfo.pl <classes.dex> <regex de classe> [native | code [regex de método]]`
-- `thumbcalls.pl <lib.so> <regex de símbolo | @0xENDEREÇO:BYTES>` — o que uma
-  função Thumb chama; o modo por endereço serve para funções sem símbolo
-- `thumbxref.pl <lib.so> <regex>` — quem chama uma função ou um import (pela PLT)
-- `imports_needed.txt` — os símbolos que o jogo importa (nomes, não conteúdo do jogo)
+- `dexinfo.pl <classes.dex> <class regex> [native | code [method regex]]`
+- `thumbcalls.pl <lib.so> <symbol regex | @0xADDRESS:BYTES>` — what a Thumb
+  function calls; the address form is for functions without a symbol
+- `thumbxref.pl <lib.so> <regex>` — who calls a function or an import
+  (through the PLT)
+- `imports_needed.txt` — the symbols the game imports (names, not game
+  content)
 
-Os dois últimos foram ajustados para bibliotecas só com `DT_GNU_HASH`.
+The last two scripts were adapted for libraries with `DT_GNU_HASH` only.
 
-## O que nunca vai para o repositório
+## What never goes into the repository
 
-O APK e a pasta extraída dele (`smash-hit-*/`) estão no `.gitignore`.
+The APK and the folder extracted from it (`smash-hit-*/`) are in
+`.gitignore`.
