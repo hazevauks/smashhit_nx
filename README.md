@@ -40,7 +40,7 @@ The game is played by touching where the ball should go.
 | A, ZR, ZL | throw a ball where the pointer is (a touch there, held while the button is) |
 | Y | puts the pointer back in the middle of the screen |
 | Right stick click (R3) | gyro aiming on / off: turning the controller moves the pointer |
-| Left stick click (L3) | the next pointer: a cross, a dot, a ball |
+| Left stick click (L3) | the next pointer: a cross, a dot, a circle with a dot in it |
 | D-pad, X | the game's own D-pad and select keys |
 | B, + | back (pause) |
 | − | menu |
@@ -51,7 +51,7 @@ The game is played by touching where the ball should go.
 `sd:/switch/smashhit_nx/config.ini` is written on the first start. Each
 option is explained in the file; among them the language (the console's by
 default), the rendering resolution, the pointer's look and speed, and the
-gyro's speed, acceleration and directions. What R3 and L3 choose is kept
+gyro's speed and directions. What R3 and L3 choose is kept
 there.
 
 ## What is different from Android

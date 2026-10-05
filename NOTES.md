@@ -84,7 +84,7 @@ belong to the paid upgrade.
 - The engine has no analogue stick: the port draws a pointer (the aim) that
   either stick moves, and A / ZR / ZL touch the screen where it is
   (`source/sh_input.c`). Y puts it back in the middle; a click of the left
-  stick changes what it looks like (cross, dot, ball). It is drawn with
+  stick changes what it looks like (cross, dot, circle). It is drawn with
   `glScissor` + `glClear` only, touching none of the game's programs, buffers
   or textures.
 - `[game] tv_mode` answers `istv` → `true` (the game's Android TV mode):
@@ -112,9 +112,19 @@ Since 0.1.3:
 
 - the pointer stays on the screen while the gyro is on, and the gyro always
   moves it (but while a finger is on the touch screen);
-- a soft dead zone (nothing below 0.4 degrees a second, all of it from 2.2),
-  smoothing for slow turns only, and fast turns that carry further
-  (`[controls] gyro_acceleration`);
+- the aim is where the controller points: the same turn moves it the same
+  distance, fast or slow, there and back. A first build of 0.1.3 had fast
+  turns carry further and a soft dead zone with speed-dependent smoothing:
+  on hardware the aim had to be recentred all the time, because a flick out
+  and a slow way back ended somewhere else, and so did the jolt of every
+  press of a button. Now nothing depends on the speed of the turn and
+  nothing of it is thrown away but a gate under 0.15 degrees a second;
+- every reading counts: the sensor keeps its last 17 (200 a second), and
+  all the new ones are added up at each poll instead of the newest alone;
+- the aim may go a little past the edge of the screen (12% of it), so the
+  pointer leaves the edge when the controller is back where it crossed it;
+- what is drawn follows the aim over 30 ms, which takes a hand's tremor out
+  without losing movement;
 - "world" space (`[controls] gyro_space`): left and right is the turn about
   the vertical, found from the accelerometer as the Labyrinth 2 port reads
   it, so it works the same with the controller flat, upright or in between.
@@ -148,6 +158,14 @@ Since 0.1.3:
   came out inverted** in handheld mode with the Angry Birds Space port's
   signs: turned over in the code, with `gyro_invert_x` / `gyro_invert_y` in
   config.ini for a controller that reads differently.
+- **Run 5 (build 202610050149, the first 0.1.3 build), handheld:** the
+  accelerometer at rest reads `+0.06 -0.53 -0.88 g` and is taken as gravity
+  (pointing down), so the console was held about 30 degrees up from flat; left
+  and right in world space came out the right way round. The author still had
+  to recentre the aim all the time (see "Gyro aiming"). The game does keep
+  files under `data/files/`, in the free version too: `progression.xml`,
+  `achievements.xml`, `quicksave.dat` (written), `config.xml`,
+  `tutorials.json`, `key.dat`, `xpromomodel.json` (looked for).
 - **Run 4 (build 202610050016), ~150 s:** the update from the NRO worked
   (1936 → 0016, restarting by itself) and config.ini got the 2 new options.
   The gyro's up and down are right (confirmed by the port's author). 60 fps,

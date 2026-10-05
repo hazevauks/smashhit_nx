@@ -21,7 +21,7 @@
  * held. The controller's motion sensor can move it too (gyro aiming: a
  * click of the right stick turns it on and off), Y puts it back in the
  * middle, and a click of the left stick changes what it looks like (a cross,
- * a dot, a ball). The other buttons go to the game as the keys it knows: the
+ * a dot, a circle). The other buttons go to the game as the keys it knows: the
  * D-pad, X as BUTTON_A, L and R as L1 and R1, B and + as BACK, - as MENU.
  *
  * One thread does it all, between the UI thread's looper turns
@@ -192,7 +192,12 @@ static void apply(const Pt *now, int n) {
 }
 
 /* ============================================================= the pointer */
-/* Read by the app thread when it draws (sh_pointer_draw): plain words. */
+/* Where the aim is: g_tx, g_ty, this thread's own. With the gyro it may lie
+ * a little off the screen (see below). What is drawn, and where A / ZR / ZL
+ * touch, is g_px, g_py: on the screen, following the aim. Those and the two
+ * flags are read by the app thread when it draws (sh_pointer_draw): plain
+ * words. */
+static float g_tx = 640.0f, g_ty = 360.0f;
 static volatile float g_px = 640.0f, g_py = 360.0f;
 static volatile int g_pshown, g_ppressed;
 static volatile int g_pstyle; /* PTR_* */
@@ -201,17 +206,29 @@ static u64 g_plast_poll;
 
 /* What the pointer looks like: [controls] pointer_style, and a click of the
  * left stick goes to the next one. */
-enum { PTR_CROSS, PTR_DOT, PTR_BALL, PTR_STYLES };
-static const char *const k_style_names[PTR_STYLES] = {"cross", "dot", "ball"};
+enum { PTR_CROSS, PTR_DOT, PTR_CIRCLE, PTR_STYLES };
+static const char *const k_style_names[PTR_STYLES] = {"cross", "dot", "circle"};
 
 #define POINTER_BUTTONS (HidNpadButton_A | HidNpadButton_ZR | HidNpadButton_ZL)
 #define POINTER_DEADZONE 0.12f
 #define POINTER_SPEED 1100.0f   /* pixels a second at full tilt, at 720p */
 #define POINTER_HIDE_NS 6000000000ull
+#define POINTER_FOLLOW_TAU 0.030f /* seconds: what is drawn follows the gyro's aim this fast */
+#define POINTER_MARGIN 0.12f      /* of the screen: how far off it the gyro's aim may go */
 
-static void pointer_clamp(float x, float y) {
-  g_px = x < 0.0f ? 0.0f : x > (float)(g_w - 1) ? (float)(g_w - 1) : x;
-  g_py = y < 0.0f ? 0.0f : y > (float)(g_h - 1) ? (float)(g_h - 1) : y;
+static float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+/* The aim kept within the screen and `margin` of it beyond each edge. */
+static void aim_clamp(float margin) {
+  g_tx = clampf(g_tx, -margin * (float)g_w, (float)(g_w - 1) + margin * (float)g_w);
+  g_ty = clampf(g_ty, -margin * (float)g_h, (float)(g_h - 1) + margin * (float)g_h);
+}
+
+/* The aim, and what is drawn, put at x, y at once. */
+static void aim_set(float x, float y) {
+  g_tx = x, g_ty = y;
+  aim_clamp(0.0f);
+  g_px = g_tx, g_py = g_ty;
 }
 
 /* A choice made with a button is kept: config.ini is written again (on this
@@ -236,41 +253,51 @@ static void remember(const char *key, const char *value) {
  *   up and down   the turn about x (tipping the controller up or down)
  *   across        "world": the turn about the vertical, wherever that is in
  *                 the controller's frame -- the accelerometer says (as the
- *                 Labyrinth 2 port reads it). Turning left and right then
- *                 works the same lying flat on a table, held upright like a
- *                 console, or anywhere between.
+ *                 Labyrinth 2 port reads it; on hardware it reads gravity,
+ *                 pointing down). Turning left and right then works the same
+ *                 lying flat, held upright, or anywhere between.
  *                 "local" ([controls] gyro_space): the turn about y alone,
  *                 as in 0.1.0 -- right only for a controller held upright.
  *
- * As in those ports, it moves the pointer whenever it is on, and the pointer
- * stays on the screen with it: 0.1.0 put the pointer away after six seconds
- * of slow aiming, and the gyro with it. What makes it steady:
+ * The aim is where the controller points: the same turn always moves it the
+ * same distance, there and back, so a position of the hands is a place on
+ * the screen and stays one. That is the whole design, and what it rules out
+ * is what two earlier tries did and had to be recentred for all the time:
  *
- *   - a soft dead zone: below 0.4 degrees a second nothing, full by 2.2 (a
- *     hard one made slow aiming stick, axis by axis);
- *   - smoothing for slow turns only (a hand's tremor), none for fast ones;
- *   - fast turns carry further ([controls] gyro_acceleration), so the whole
- *     screen is a flick away and a slow turn stays precise. */
+ *   - nothing depends on how fast the turn is. Fast turns carrying further
+ *     (the first 0.1.3 build) meant a flick out and a slow way back ended
+ *     somewhere else, and so did the jolt of every press of a button;
+ *   - nothing of a turn is thrown away. A dead zone wide enough to feel
+ *     (0.1.0's, a softer one after it) loses the slow part of every
+ *     movement; what is left is a gate under 0.15 degrees a second, for a
+ *     controller lying still;
+ *   - every sample counts. The sensor is read 200 times a second and keeps
+ *     its last 17 readings; taking only the newest one each 8 ms missed what
+ *     lay between. All the new ones are added up;
+ *   - the edge of the screen does not eat a turn at once: the aim may go a
+ *     little past it (POINTER_MARGIN), and the pointer leaves the edge when
+ *     the controller is back where it crossed it.
+ *
+ * A hand is never still, so what is drawn follows the aim over a few
+ * hundredths of a second (POINTER_FOLLOW_TAU): that takes the tremor out
+ * without losing any of the movement. Y puts the aim in the middle of the
+ * screen: "this is straight ahead". */
 enum { SIX_HANDHELD, SIX_PRO, SIX_DUAL_LEFT, SIX_DUAL_RIGHT, SIX_COUNT };
 static HidSixAxisSensorHandle g_six[SIX_COUNT];
 static int g_gyro_ready, g_gyro_on;
 
-#define GYRO_GAIN 10000.0f   /* pixels a second for one turn a second, at 1080p, slowly */
-#define GYRO_DEAD0 0.0010f   /* turns a second: nothing below */
-#define GYRO_DEAD1 0.0060f   /* ... all of it from here */
-#define GYRO_SMOOTH0 0.010f  /* turns a second: smoothed below */
-#define GYRO_SMOOTH1 0.050f  /* ... not at all from here */
-#define GYRO_SMOOTH_TAU 0.045f
-#define GYRO_FAST0 0.06f     /* turns a second: where fast turns begin to carry further */
-#define GYRO_FAST1 0.40f     /* ... and where they carry [controls] gyro_acceleration times */
-#define GRAVITY_TAU 0.20f    /* seconds: the accelerometer, steadied */
+#define GYRO_GAIN 10000.0f  /* pixels for one whole turn, at 1080p ([controls] gyro_speed times it) */
+#define GYRO_GATE 0.0004f   /* turns a second: less is a controller lying still */
+#define GRAVITY_TAU 0.20f   /* seconds: the accelerometer, steadied */
+#define SIX_STATES 17       /* what the sensor's buffer holds */
 
 static struct {
   int kind;        /* SIX_* last read, -1 none: a change starts over */
+  u64 seq;         /* the last reading used (its sampling number) */
+  u64 tick;        /* ... and when */
   float up[3];     /* the accelerometer steadied (its sign is the sensor's) */
   float up_sign;   /* +1: it reads the reaction to gravity (up); -1: gravity; 0: not known yet */
   float vote;      /* towards up_sign */
-  float sx, sy;    /* the smoothed turn */
   int logged;
 } g_gyro = {.kind = -1};
 
@@ -288,64 +315,87 @@ static void gyro_init(void) {
   }
   g_gyro_on = g_gyro_ready && dcr_config()->gyro;
   debugPrintf("[input] motion sensors %s (0x%x 0x%x 0x%x); gyro aiming %s (right stick click: on/off), "
-              "%s space, speed %.2f, acceleration %.2f\n",
+              "%s space, speed %.2f\n",
               g_gyro_ready ? "ready" : "NOT available", (unsigned)r0, (unsigned)r1, (unsigned)r2,
               g_gyro_on ? "on" : "off", dcr_config()->gyro_space ? "local" : "world",
-              (double)dcr_config()->gyro_speed, (double)dcr_config()->gyro_accel);
+              (double)dcr_config()->gyro_speed);
 }
 
 /* The sensor of the controller in the player's hands, in a Joy-Con's frame:
- * its angular velocity and its acceleration. 1 when one was read. */
-static int gyro_sample(float w[3], float a[3], int *kind) {
-  HidSixAxisSensorState s = {0};
+ * its readings since the last call, as their mean angular velocity and
+ * acceleration over `*dt` seconds. 1 when there were new ones. */
+static int gyro_sample(float w[3], float a[3], float *dt) {
+  static HidSixAxisSensorState st[SIX_STATES];
   float turn = 1.0f; /* the Pro Controller's frame: half a turn about z */
-  int got = 0;
+  int kind = -1;
   if (padIsConnected(&g_pads[1])) {
-    *kind = SIX_HANDHELD;
-    got = hidGetSixAxisSensorStates(g_six[SIX_HANDHELD], &s, 1) > 0;
+    kind = SIX_HANDHELD;
   } else if (padIsConnected(&g_pads[0])) {
     const u64 style = padGetStyleSet(&g_pads[0]);
     if (style & HidNpadStyleTag_NpadFullKey) {
       turn = -1.0f;
-      *kind = SIX_PRO;
-      got = hidGetSixAxisSensorStates(g_six[SIX_PRO], &s, 1) > 0;
+      kind = SIX_PRO;
     } else if (style & HidNpadStyleTag_NpadJoyDual) {
       const u32 attr = padGetAttributes(&g_pads[0]);
-      if (attr & HidNpadAttribute_IsRightConnected) {
-        *kind = SIX_DUAL_RIGHT;
-        got = hidGetSixAxisSensorStates(g_six[SIX_DUAL_RIGHT], &s, 1) > 0;
-      } else if (attr & HidNpadAttribute_IsLeftConnected) {
-        *kind = SIX_DUAL_LEFT;
-        got = hidGetSixAxisSensorStates(g_six[SIX_DUAL_LEFT], &s, 1) > 0;
-      }
+      if (attr & HidNpadAttribute_IsRightConnected)
+        kind = SIX_DUAL_RIGHT;
+      else if (attr & HidNpadAttribute_IsLeftConnected)
+        kind = SIX_DUAL_LEFT;
     }
   }
-  if (!got)
+  if (kind < 0)
     return 0;
-  w[0] = s.angular_velocity.x * turn, w[1] = s.angular_velocity.y * turn, w[2] = s.angular_velocity.z;
-  a[0] = s.acceleration.x * turn, a[1] = s.acceleration.y * turn, a[2] = s.acceleration.z;
+  const size_t n = hidGetSixAxisSensorStates(g_six[kind], st, SIX_STATES);
+  if (!n)
+    return 0;
+  const u64 now = armGetSystemTick();
+  u64 newest = 0;
+  for (size_t i = 0; i < n; i++)
+    if (st[i].sampling_number > newest)
+      newest = st[i].sampling_number;
+  if (kind != g_gyro.kind) { /* another controller, or the first reading: nothing carries over */
+    g_gyro.kind = kind;
+    g_gyro.seq = newest;
+    g_gyro.tick = now;
+    g_gyro.up_sign = g_gyro.vote = 0.0f;
+    g_gyro.logged = 0;
+    for (size_t i = 0; i < n; i++)
+      if (st[i].sampling_number == newest) {
+        g_gyro.up[0] = st[i].acceleration.x * turn;
+        g_gyro.up[1] = st[i].acceleration.y * turn;
+        g_gyro.up[2] = st[i].acceleration.z;
+      }
+    return 0;
+  }
+  float sw[3] = {0}, sa[3] = {0};
+  int fresh = 0;
+  for (size_t i = 0; i < n; i++) {
+    if (st[i].sampling_number <= g_gyro.seq)
+      continue;
+    sw[0] += st[i].angular_velocity.x, sw[1] += st[i].angular_velocity.y, sw[2] += st[i].angular_velocity.z;
+    sa[0] += st[i].acceleration.x, sa[1] += st[i].acceleration.y, sa[2] += st[i].acceleration.z;
+    fresh++;
+  }
+  if (!fresh)
+    return 0; /* the time since the last one goes to the next */
+  float secs = (float)armTicksToNs(now - g_gyro.tick) / 1e9f;
+  g_gyro.seq = newest;
+  g_gyro.tick = now;
+  if (secs > 0.1f) /* the game was held (HOME, a long frame of this thread): not a turn */
+    secs = 0.0f;
+  const float inv = 1.0f / (float)fresh;
+  w[0] = sw[0] * inv * turn, w[1] = sw[1] * inv * turn, w[2] = sw[2] * inv;
+  a[0] = sa[0] * inv * turn, a[1] = sa[1] * inv * turn, a[2] = sa[2] * inv;
+  *dt = secs;
   return 1;
 }
 
-static float ramp(float v, float lo, float hi) {
-  return v <= lo ? 0.0f : v >= hi ? 1.0f : (v - lo) / (hi - lo);
-}
-
-/* The controller's turn as pointer movement (x right, y down), in pixels,
- * over dt seconds: 1 when the sensor was read. *aiming: it was turned on
- * purpose. */
-static int gyro_move(float dt, float *dx, float *dy, int *aiming) {
-  float w[3], a[3];
-  int kind = -1;
-  if (!gyro_sample(w, a, &kind))
+/* The controller's turn since the last call as movement of the aim (x
+ * right, y down), in pixels: 1 when the sensor had new readings. */
+static int gyro_move(float *dx, float *dy) {
+  float w[3], a[3], dt = 0.0f;
+  if (!gyro_sample(w, a, &dt))
     return 0;
-  if (kind != g_gyro.kind) { /* another controller: nothing carries over */
-    g_gyro.kind = kind;
-    g_gyro.up[0] = a[0], g_gyro.up[1] = a[1], g_gyro.up[2] = a[2];
-    g_gyro.up_sign = g_gyro.vote = 0.0f;
-    g_gyro.sx = g_gyro.sy = 0.0f;
-    g_gyro.logged = 0;
-  }
   /* the vertical: the accelerometer, steadied (a moving hand adds to it) */
   const float k = dt / (GRAVITY_TAU + dt);
   for (int i = 0; i < 3; i++)
@@ -363,7 +413,7 @@ static int gyro_move(float dt, float *dx, float *dy, int *aiming) {
       g_gyro.vote += (lean > 0.0f ? dt : -dt);
       if (fabsf(g_gyro.vote) >= 0.5f) {
         g_gyro.up_sign = g_gyro.vote > 0.0f ? 1.0f : -1.0f;
-        debugPrintf("[input] gyro: controller %d at rest reads %+.2f %+.2f %+.2f g: %s\n", kind,
+        debugPrintf("[input] gyro: controller %d at rest reads %+.2f %+.2f %+.2f g: %s\n", g_gyro.kind,
                     (double)g_gyro.up[0], (double)g_gyro.up[1], (double)g_gyro.up[2],
                     g_gyro.up_sign > 0.0f ? "the reaction to gravity (up)" : "gravity (down)");
       }
@@ -385,23 +435,14 @@ static int gyro_move(float dt, float *dx, float *dy, int *aiming) {
                 (double)w[0], (double)w[1], (double)w[2], (double)g_gyro.up[0], (double)g_gyro.up[1],
                 (double)g_gyro.up[2], (double)vx, (double)vy);
   }
-  /* slow turns smoothed, fast ones as they are */
-  const float mag = sqrtf(vx * vx + vy * vy);
-  const float ks = dt / (GYRO_SMOOTH_TAU + dt);
-  g_gyro.sx += (vx - g_gyro.sx) * ks;
-  g_gyro.sy += (vy - g_gyro.sy) * ks;
-  const float direct = ramp(mag, GYRO_SMOOTH0, GYRO_SMOOTH1);
-  vx = g_gyro.sx + (vx - g_gyro.sx) * direct;
-  vy = g_gyro.sy + (vy - g_gyro.sy) * direct;
-  /* the soft dead zone, and what a fast turn adds */
-  const float m2 = sqrtf(vx * vx + vy * vy);
-  float t = ramp(m2, GYRO_DEAD0, GYRO_DEAD1);
-  t = t * t * (3.0f - 2.0f * t);
-  const float fast = 1.0f + (dcr_config()->gyro_accel - 1.0f) * ramp(m2, GYRO_FAST0, GYRO_FAST1);
-  const float gain = GYRO_GAIN * dcr_config()->gyro_speed * ((float)g_h / 1080.0f) * dt * t * fast;
+  /* a controller lying still: nothing (both ways together, so a slow turn
+   * along one of them is not cut out of a diagonal) */
+  if (vx * vx + vy * vy < GYRO_GATE * GYRO_GATE)
+    vx = vy = 0.0f;
+  /* the turn itself, in pixels: the same for the same turn, fast or slow */
+  const float gain = GYRO_GAIN * dcr_config()->gyro_speed * ((float)g_h / 1080.0f) * dt;
   *dx = vx * gain;
   *dy = vy * gain;
-  *aiming = m2 > GYRO_FAST0;
   return 1;
 }
 
@@ -417,6 +458,7 @@ static void pointer_poll(u64 buttons, u64 down, const float sticks[4], int touch
   if ((down & HidNpadButton_StickR) && g_gyro_ready) {
     g_gyro_on = !g_gyro_on;
     g_gyro.kind = -1;
+    aim_set(g_px, g_py); /* the aim is where the pointer is seen */
     debugPrintf("[input] gyro aiming %s\n", g_gyro_on ? "on" : "off");
     remember("gyro_pointer", g_gyro_on ? "true" : "false");
     used = 1;
@@ -430,20 +472,20 @@ static void pointer_poll(u64 buttons, u64 down, const float sticks[4], int touch
   }
   /* Y: back to the middle */
   if (down & HidNpadButton_Y) {
-    pointer_clamp((float)g_w * 0.5f, (float)g_h * 0.5f);
+    aim_set((float)g_w * 0.5f, (float)g_h * 0.5f);
     used = 1;
   }
   /* the controller's motion: always while it is on, but for a finger on the
    * touch screen (the console is being held to be touched, not turned) */
-  if (g_gyro_on && !touching && dt > 0.0f) {
+  const int gyro = g_gyro_on && !touching;
+  if (gyro) {
     float dx, dy;
-    int aiming = 0;
-    if (gyro_move(dt, &dx, &dy, &aiming)) {
-      if (dx != 0.0f || dy != 0.0f)
-        pointer_clamp(g_px + dx, g_py + dy);
-      if (aiming)
-        used = 1;
+    if (gyro_move(&dx, &dy)) {
+      g_tx += dx, g_ty += dy;
+      aim_clamp(POINTER_MARGIN);
     }
+  } else {
+    g_gyro.kind = -1; /* what the sensor read meanwhile is not a turn of the aim */
   }
   /* whichever stick is pushed further */
   float sx = sticks[0], sy = sticks[1];
@@ -456,9 +498,19 @@ static void pointer_poll(u64 buttons, u64 down, const float sticks[4], int touch
     const float speed = POINTER_SPEED * (0.25f + 0.75f * t / (1.0f - POINTER_DEADZONE)) *
                         (t / (1.0f - POINTER_DEADZONE)) * dcr_config()->pointer_speed *
                         ((float)g_h / 720.0f);
-    pointer_clamp(g_px + sx / mag * speed * dt, g_py - sy / mag * speed * dt); /* stick y is up */
+    aim_clamp(0.0f); /* a stick moves what is seen: from the edge, not from beyond it */
+    g_tx += sx / mag * speed * dt;
+    g_ty -= sy / mag * speed * dt; /* stick y is up */
+    aim_clamp(0.0f);
     used = 1;
   }
+  /* what is drawn: on the screen, at the aim -- at once without the gyro,
+   * after it by a moment with it */
+  const float ax = clampf(g_tx, 0.0f, (float)(g_w - 1)), ay = clampf(g_ty, 0.0f, (float)(g_h - 1));
+  const float follow = gyro ? dt / (POINTER_FOLLOW_TAU + dt) : 1.0f;
+  g_px = g_px + (ax - g_px) * follow;
+  g_py = g_py + (ay - g_py) * follow;
+
   const int pressed = (buttons & POINTER_BUTTONS) != 0;
   if (pressed)
     used = 1;
@@ -477,8 +529,7 @@ static void pointer_poll(u64 buttons, u64 down, const float sticks[4], int touch
 /* ==================================================================== poll */
 void sh_input_init(void) {
   dcr_window_size(&g_w, &g_h);
-  g_px = (float)g_w * 0.5f;
-  g_py = (float)g_h * 0.5f;
+  aim_set((float)g_w * 0.5f, (float)g_h * 0.5f);
   g_pstyle = dcr_config()->pointer_style % PTR_STYLES;
   rt_pad_setup(1, 1);
   rt_pad_slot(&g_pads[0], 0);
@@ -549,15 +600,13 @@ void sh_input_reset(void) {
  * The game draws with OpenGL ES 2 and keeps track of the state it set, so
  * nothing of that may change under it: no program, no buffers, no textures
  * are touched. Every pointer is made of scissored glClears -- bars for the
- * cross, a row at a time for the round ones -- in plain colours, light on a
- * dark edge so it shows on any background; the four things that takes (the
- * scissor test and box, the clear colour, the colour mask) are read first
- * and put back.
+ * cross, a row at a time for the round ones -- white on a black edge, so it
+ * shows on any background; the four things that takes (the scissor test and
+ * box, the clear colour, the colour mask) are read first and put back.
  *
- *   cross   four bars around a dot
- *   dot     a small disc, for an aim that hides nothing
- *   ball    a shaded sphere of the port's own drawing, the size of a thrown
- *           ball in the distance */
+ *   cross    four bars around a dot
+ *   dot      a small disc, for an aim that hides nothing
+ *   circle   a ring with a dot in its middle, as in most shooting games */
 #define GL_SCISSOR_TEST 0x0C11
 #define GL_SCISSOR_BOX 0x0C10
 #define GL_COLOR_CLEAR_VALUE 0x0C22
@@ -599,17 +648,26 @@ static void bar(float cx, float cy, float w, float h) {
   G.Clear(GL_COLOR_BUFFER_BIT);
 }
 
-static void colour(float r, float g, float b) { G.ClearColor(r, g, b, 1.0f); }
+static void black(void) { G.ClearColor(0.0f, 0.0f, 0.0f, 1.0f); }
+static void white(void) { G.ClearColor(1.0f, 1.0f, 1.0f, 1.0f); }
 
-/* A filled circle, a row (two at 1080p) at a time. */
-static void disc(float cx, float cy, float r) {
+/* A ring between the radii r_in and r_out (r_in 0: a filled circle), a row
+ * (two at 1080p) at a time: one span where the row misses the hole, one on
+ * each side of it where it does not. */
+static void ring(float cx, float cy, float r_out, float r_in) {
   const float step = g_h >= 1080 ? 2.0f : 1.0f;
-  const float y0 = (float)(int)(cy - r);
-  for (float y = y0; y < cy + r; y += step) {
-    const float d = y + step * 0.5f - cy, half2 = r * r - d * d;
-    if (half2 <= 0.0f)
+  for (float y = (float)(int)(cy - r_out); y < cy + r_out; y += step) {
+    const float d = y + step * 0.5f - cy, out2 = r_out * r_out - d * d;
+    if (out2 <= 0.0f)
       continue;
-    bar(cx, y + step * 0.5f, 2.0f * sqrtf(half2), step);
+    const float xo = sqrtf(out2), in2 = r_in * r_in - d * d;
+    if (in2 <= 0.0f) {
+      bar(cx, y + step * 0.5f, 2.0f * xo, step);
+    } else {
+      const float xi = sqrtf(in2);
+      bar(cx - (xo + xi) * 0.5f, y + step * 0.5f, xo - xi, step);
+      bar(cx + (xo + xi) * 0.5f, y + step * 0.5f, xo - xi, step);
+    }
   }
 }
 
@@ -648,27 +706,25 @@ void sh_pointer_draw(void) {
   G.ColorMask(1, 1, 1, 1);
   switch (g_pstyle) {
   case PTR_DOT:
-    colour(0.0f, 0.0f, 0.0f);
-    disc(x, y, 5.5f * s);
-    colour(1.0f, 1.0f, 1.0f);
-    disc(x, y, 3.5f * s);
+    black();
+    ring(x, y, 5.5f * s, 0.0f);
+    white();
+    ring(x, y, 3.5f * s, 0.0f);
     break;
-  case PTR_BALL: {
-    const float r = 12.0f * s;
-    colour(0.05f, 0.06f, 0.08f); /* the edge */
-    disc(x, y, r + 1.5f * s);
-    colour(0.50f, 0.54f, 0.60f); /* the body, in shade */
-    disc(x, y, r);
-    colour(0.74f, 0.78f, 0.84f); /* where the light falls */
-    disc(x - 0.20f * r, y - 0.22f * r, 0.66f * r);
-    colour(1.0f, 1.0f, 1.0f);    /* the glint */
-    disc(x - 0.36f * r, y - 0.40f * r, 0.24f * r);
+  case PTR_CIRCLE: {
+    const float r = 15.0f * s, t = 2.0f * s, edge = 1.5f * s;
+    black();
+    ring(x, y, r + edge, r - t - edge);
+    ring(x, y, 2.5f * s + edge, 0.0f);
+    white();
+    ring(x, y, r, r - t);
+    ring(x, y, 2.5f * s, 0.0f);
     break;
   }
   default:
-    colour(0.0f, 0.0f, 0.0f);
+    black();
     cross(x, y, s, 1.5f * s);
-    colour(1.0f, 1.0f, 1.0f);
+    white();
     cross(x, y, s, 0.0f);
     break;
   }
