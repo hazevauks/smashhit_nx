@@ -111,6 +111,18 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
   modo portátil com os sinais do port de Angry Birds Space: invertido no
   código, e `gyro_invert_x` / `gyro_invert_y` no config.ini para qualquer
   controle que leia diferente.
+- **Execução 4 (build 202610050016), ~150 s:** a atualização pelo NRO funcionou
+  (1936 → 0016, reinício sozinho) e o config.ini recebeu as 2 opções novas. Eixo
+  Y do giroscópio correto (confirmado pelo autor). 60 fps, áudio com 0
+  underruns, heap 300-314 MB, 21-23 objetos Java; nenhum `unhandled`, nenhum
+  comando desconhecido, nenhum erro de GL. Um quadro de 247 ms ao chegar a um
+  checkpoint (carga do trecho seguinte). O log termina sem a sequência de
+  saída e sem nenhuma linha de foco perdido: fechar pelo menu HOME congela o
+  processo e o encerra, como nos outros ports — o caminho de pausa/retomada
+  (`onPauseNative` / `onResumeNative`) **ainda não apareceu em log nenhum**.
+- IDs de programa vistos em outros ports no GitHub: 100E, 100F, 1010, 1015,
+  10D7, 1F1A. O 10E4 deste port não colide com nenhum deles (a busca só
+  alcança repositórios públicos indexados).
 - **Giroscópio:** o jogo não usa sensor nenhum (nenhum import `ASensor`), então
   só entra pelo port, movendo a mira: `hidGetSixAxisSensorHandles` /
   `hidGetSixAxisSensorStates` (portátil, Pro Controller, par de Joy-Cons), com
@@ -132,7 +144,9 @@ comprado, sem anúncios, sem Play Games, remote config nunca buscado.
       Controller e par de Joy-Cons soltos (sentido, velocidade, deriva)
 - [x] Desempenho: 60 fps e áudio sem underruns (execução 3)
 - [ ] Conferir o mapeamento de botões (o que `BACK`/`MENU`/D-pad fazem no jogo)
-- [ ] Conferir onde o jogo grava o save (`user://`) e se persiste
+- [x] Save: a versão gratuita não guarda progresso (os checkpoints são do
+      premium, que não é liberado). Falta só ver o que ela grava em `data/`
+      (config, recorde): `dcr_path_traced` agora registra os acessos a essa pasta
 - [ ] Ícone do launcher: hoje um provisório desenhado pelo port
 - [ ] `PORT_NPDM_PROGRAM_ID` (0x01000000000010E4): confirmar que não colide
       com outro port

@@ -8,8 +8,6 @@ The port is a wrapper: it loads the game's own code from your APK and gives
 it what it expects from Android. **No game files are included.** You need
 your own copy of the game.
 
-> Work in progress: not yet tested on hardware.
-
 ## What you need
 
 - A Switch with Atmosphère and [sphaira](https://github.com/ITotalJustice/sphaira)
@@ -58,7 +56,9 @@ default), the rendering resolution and the pointer's speed.
 - Nothing online: no ads, purchases, leaderboards, achievements or cloud
   saves. The game is told what an offline phone tells it. What the game
   sells or gives for watching an ad is not available.
-- Saves are kept in `sd:/switch/smashhit_nx/data/`.
+- As on a phone without the game's paid upgrade, every run starts from the
+  beginning: the checkpoints belong to that upgrade, which cannot be bought
+  here. Whatever the game itself keeps is in `sd:/switch/smashhit_nx/data/`.
 
 ## Reporting a problem
 

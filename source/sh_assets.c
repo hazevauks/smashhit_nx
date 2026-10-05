@@ -238,3 +238,18 @@ int32_t b_AAsset_getLength(void *p) {
 }
 
 int64_t b_AAsset_getLength64(void *p) { return b_AAsset_getLength(p); }
+
+/* ============================================================ the log */
+/* The runtime logs what it does with the paths it is told are worth it
+ * (dcr_path.h): by default the APK's, which most engines open once. This one
+ * opens it for every asset, so the first hardware logs began with a hundred
+ * identical lines. What is worth a line here is the other side: the app's
+ * own folder, where the game writes what it keeps. The first few times only:
+ * the runtime's fopen and stat lines have no limit of their own. */
+int dcr_path_traced(const char *p) {
+  static int budget = 60;
+  if (!p || budget <= 0 || strstr(p, ".apk") || !strstr(p, "/data/"))
+    return 0;
+  budget--;
+  return 1;
+}
