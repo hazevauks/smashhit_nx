@@ -11,24 +11,28 @@ Process:
 
 ## Ready for changelog
 
-For 0.1.3. **Not yet tested on hardware.**
+(nothing yet)
 
-- [ ] Gyro aiming points like a laser: where the controller points is a
+## Released
+
+### 0.1.3
+
+Tested on hardware, handheld.
+
+- Gyro aiming points like a laser: where the controller points is a
   place on the screen and stays one, so the aim no longer has to be put back
   in the middle all the time. The pointer stays on the screen while the gyro
   is on (it used to disappear, and the gyro with it, after a few seconds of
   slow aiming), and a shaking hand is smoothed out without losing movement.
-- [ ] Turning left and right now means a turn about the vertical, however
+- Turning left and right now means a turn about the vertical, however
   the controller is held: flat, upright or in between (`[controls]
   gyro_space = local` is the old way).
-- [ ] Three pointers: the cross, a dot, and a circle with a dot in its
+- Three pointers: the cross, a dot, and a circle with a dot in its
   middle. A click of the left stick (L3) goes to the next one (`[controls]
   pointer_style`).
-- [ ] What R3 (gyro on / off) and L3 (the pointer) choose is kept in
+- What R3 (gyro on / off) and L3 (the pointer) choose is kept in
   config.ini.
-- [ ] The repository's notes are in English.
-
-## Released
+- The repository's notes are in English.
 
 ### 0.1.0
 
